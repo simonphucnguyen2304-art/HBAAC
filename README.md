@@ -1,85 +1,354 @@
-# Model dự báo nhu cầu phụ tùng Ô tô B2B - [Team CMD]
+# HBAAC 2026 — B2B Automotive Parts Demand Forecasting
 
-Cuộc thi: **HBAC 2026**
 
-## 1. Project Overview
-Dự án này tập trung giải quyết bài toán Time-series Forecasting cho danh mục B2B khổng lồ gồm **15,972 SKUs** của một nhà phân phối phụ tùng ô tô tại Việt Nam. Dữ liệu lịch sử giao dịch trải dài từ tháng 11/2020 đến tháng 09/2025 với hơn **700,000 bản ghi thô**
+**Team CMD · HBAAC 2026**
 
-**Thách thức của bài toán:**
-1. **Dữ liệu thưa thớt & Biến động lớn:** Phần lớn các mã phụ tùng có tần suất xuất hiện rất thấp, nhu cầu không liên tục dẫn đến tạo ra hiện tượng Zero-Inflated.
-2. **Hiện tượng giá trị âm do hàng Returns:** Hành vi gara trả lại phụ tùng do chẩn đoán sai tạo ra các giao dịch số lượng âm (`Quantity < 0`), làm gãy đổ các mô hình Time-series truyền thống
-3. **Độ phức tạp của quy mô dữ liệu:** Khi thực hiện time padding để tạo lưới liên tục cho toàn bộ SKUs trong hơn 1,700 ngày, quy mô dữ liệu bùng nổ lên tới **hơn 28 triệu dòng**, dễ gây tràn RAM
-4. **Hàm mục tiêu khắt khe:** Đánh giá bằng **WRMSSE** (Weighted Root Mean Squared Scaled Error), đặt trọng số phạt cực nặng vào các mặt hàng mang lại lợi nhuận cao
+A practical, scalable forecasting pipeline for sparse and intermittent demand across **15,972 automotive-part SKUs**.
 
-**Hướng tiếp cận của Team:** Thay vì sử dụng các mô hình Machine Learning hộp đen (Black-box), team tiếp cận bằng phương pháp Data-driven: Tối ưu hạ tầng lưu trữ qua **SQL Server**, xử lý nhiễu bằng thuật toán tịnh tiến tích lũy (Rolling Compensation), và xây dựng mô hình **Rule-based (Heuristics & Moving Average)** tối ưu trực tiếp cho hàm mục tiêu WRMSSE
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Jupyter](https://img.shields.io/badge/Jupyter-Notebook-F37626?logo=jupyter&logoColor=white)](https://jupyter.org/)
+[![Forecasting](https://img.shields.io/badge/Problem-Time--Series%20Forecasting-6f42c1)](#project-overview)
+[![Competition](https://img.shields.io/badge/Competition-HBAAC%202026-ff6b35)](#project-overview)
+
+</div>
 
 ---
 
-## 2. Kiến trúc Thư mục (Repository Structure)
+## Table of Contents
+
+- [Project Overview](#project-overview)
+- [Business Problem](#business-problem)
+- [Repository Structure](#repository-structure)
+- [Methodology](#methodology)
+- [How to Run](#how-to-run)
+- [Outputs](#outputs)
+- [Results](#results)
+- [Team](#team)
+- [Limitations and Future Work](#limitations-and-future-work)
+- [License](#license)
+
+---
+
+## Project Overview
+
+This repository contains our solution for **HBAAC 2026**, a forecasting challenge focused on estimating future demand for a large B2B automotive-parts distributor in Vietnam.
+
+The project is designed around a simple principle: for highly sparse and intermittent demand, **data quality, segmentation, and business-aware rules can be more valuable than an unnecessarily complex black-box model**.
+
+### Core Objectives
+
+- Clean and standardize transaction-level sales data.
+- Handle returned parts represented by negative quantities.
+- Build a continuous time series for thousands of SKUs.
+- Separate active products from sparse or inactive products.
+- Generate conservative forecasts that reduce costly over-forecasting.
+- Produce a submission file that follows the competition format.
+
+---
+
+## Business Problem
+
+The dataset presents several real-world forecasting challenges:
+
+1. **Sparse and intermittent demand**  
+   Many SKUs sell infrequently, so standard averages can be unstable.
+
+2. **Negative transactions**  
+   Returned parts create negative quantities and can distort demand signals.
+
+3. **Large data volume**  
+   Padding 15,972 SKUs across more than 1,700 days creates a very large time-series grid.
+
+4. **Asymmetric evaluation**  
+   The WRMSSE metric strongly emphasizes commercially important items and penalizes poor forecasts on high-impact series.
+
+5. **Operational risk**  
+   Over-forecasting slow-moving parts can create unnecessary inventory and working-capital costs.
+
+---
+
+## Repository Structure
 
 ```text
-├── .gitignore                   <- Chặn các file rác, file hệ thống và data thô quá nặng.
-├── README.md                    <- Tổng quan dự án và hướng dẫn vận hành.
-├── data/                        
-│   ├── raw/                     <- Chứa `train.csv` và `sample_submission.csv`
-│   └── processed/               <- Dữ liệu đã làm sạch (`train_cleaned.csv`)
-├── notebooks/                   
-│   ├── 01_data_cleaning_and_eda.ipynb <- Pipeline dọn rác, xử lý số âm, Time-Series Padding kết hợp Phân tích trực quan hóa (Pareto, Sparsity).
-│   └── 02_rule_based_model_v6.ipynb   <- Feature Engineering, tính toán Moving Average và Hậu xử lý Rule-based.
-└── submissions/                 <- Chứa kết quả dự báo cuối cùng (`submission.csv`).
+HBAAC/
+├── dataset/
+│   └── dataset link                         # Link to the competition dataset
+│
+├── notebooks/
+│   ├── 01_data_cleaning_and_eda.ipynb       # Cleaning, returns handling, padding, and EDA
+│   └── 02_model.ipynb                       # Feature engineering, forecasting, and export
+│
+├── submissions/
+│   ├── .gitkeep
+│   └── submission.csv                       # Generated competition submission
+│
+├── CV.md                                    # Project author's compact English CV
+├── README.md                                # Project documentation
+└── .gitignore
 ```
 
 ---
 
-## 3. Hướng dẫn cài đặt và chạy code
+## Methodology
 
-Để tái tạo lại toàn bộ kết quả của nhóm từ dữ liệu thô, vui lòng thực hiện theo đúng thứ tự sau:
+### 1. Data Cleaning and Exploratory Analysis
 
-**Chuẩn bị dữ liệu:** Tải file `train.csv` và `sample_submission.csv` từ hệ thống Ban Tổ Chức, đặt vào thư mục `dataset` trong máy
+`notebooks/01_data_cleaning_and_eda.ipynb` prepares the raw transactions for forecasting by:
 
-* **Bước 1 - Data Cleaning & EDA (Làm sạch & Khai phá dữ liệu):** Chạy file `notebooks/01_data_cleaning_and_eda.ipynb`. Tập lệnh này sẽ thực hiện song song 2 nhiệm vụ: 
-  * Ép kiểu dữ liệu an toàn, xử lý triệt để lượng hàng trả về (tịnh tiến số âm), lấp đầy lưới thời gian (padding) để xuất ra ma trận `train_cleaned.csv` hoàn chỉnh
-  * Tự động quét, vẽ biểu đồ phân phối lợi nhuận và định vị đặc tính thưa thớt (sparsity) của các mã hàng.
-* **Bước 2 - Tính toán Mô hình & Dự báo:** Chạy file `notebooks/02_model.ipynb`. Tập lệnh này sẽ lấy file data sạch ở Bước 1, áp dụng các công thức Moving Average, kích hoạt các Rule chặn sàn đối với các mã End-of-Life, và đóng gói ra file nộp bài chuẩn tại `submissions/submission.csv`
-
----
-
-## 4. Phương pháp luận và Insights 
-
-Thay vì áp dụng các mô hình học máy dễ bị bẫy sai số phân số phá hủy điểm số WRMSSE trên tập dữ liệu thưa thớt, team tập trung thiết lập một hệ thống **Stale-Aware Conservative Rule-Based Forecasting**. Các kỹ thuật được triển khai trực tiếp từ cấu trúc mã nguồn hệ thống bao gồm:
-
-### 4.1. Khấu trừ Lượng hàng trả (Negative Returns)
-* **Thuật toán tịnh tiến lũy kế (Rolling Compensation):** Khắc phục nhiễu do garage trả hàng (`Quantity < 0`). Lượng hàng trả được bù trừ ngược logic về các ngày mua hàng trước đó của chính SKU đó, bảo toàn tổng lượng cầu thực tế mà không làm biến dạng chuỗi thời gian phân tích
-
-### 4.2. Cô lập phân đoạn Thưa thớt (Sparse vs. Active Segments)
-Mô hình toán học của chỉ số WRMSSE phạt cực nặng lỗi dự báo thừa (Over-forecasting) trên nhóm sản phẩm bán chậm do mẫu số phương sai lịch sử của nhóm này rất nhỏ. 
-* **Hành động toán học:** Team thiết lập ngưỡng `sparse_threshold` để chia tách danh mục SKU làm 2 phân đoạn rõ rệt: Nhóm Hoạt động (Active) và Nhóm Thưa thớt (Sparse)
-* Nhóm Sparse được áp dụng một mức dự báo nền cực thấp (Conservative Baseline) để triệt tiêu hoàn toàn rủi ro tích lũy sai số WRMSSE trên diện rộng
-
-### 4.3. Cơ chế Stale-Aware & Kiểm soát Hoạt động Gần nhất (Low Recent Activity)
-Đây là cải tiến cốt lõi giúp nâng cấp mô hình từ các phiên bản trước lên cấu trúc model cuối cùng:
-* **Stale Rules - Hard/Soft):** Trích xuất từ phân tích vòng đời sản phẩm, hệ thống đo lường khoảng cách từ lần bán cuối cùng (`Days since last sale`). Nếu một SKU vượt ngưỡng đóng băng (`stale_days`), kết quả dự báo lập tức bị ép (clip) về `0` hoặc mức sàn bảo thủ để tiết kiệm tài nguyên và tối ưu metric
-* **Under-forecast Control (Low Recent Activity):** Bản model cuối cùng bổ sung cơ chế kiểm soát động cho các mã hàng có hoạt động cực kỳ yếu trong vòng 14 ngày gần nhất (`low_recent_activity`). Bộ lọc này hoạt động như một lớp "phanh hãm" ngăn chặn mô hình đưa ra các dự báo cầu đột biến thiếu căn cứ khi chuỗi đang có dấu hiệu đi xuống
-
-### 4.4. Tinh chỉnh Lịch trình kinh doanh và Tự động Fallback
-* **Calendar Multipliers:** Mô hình tích hợp bộ điều chỉnh trọng số ngày đặc biệt, thực hiện giảm mạnh lượng cầu vào các ngày có hoạt động giao dịch thấp theo hành vi ngành (ví dụ: ngày Chủ Nhật với `sunday_multiplier`)
-* **Grid Search & Fallback Framework:** Thay vì cố định tham số, version model cuối cùng vận hành một không gian tìm kiếm hẹp (Focused Search Space) quanh vùng cấu hình tối ưu của tập Validation nội bộ. Điểm đặc sắc nhất là cơ chế an toàn: Nếu cấu hình mới không vượt qua được điểm kiểm định chéo của phiên bản cũ, hệ thống sẽ tự động kích hoạt chế độ Fallback bảo thủ để đảm bảo file nộp bài cuối cùng luôn giữ độ ổn định cao nhất
-* **Hậu xử lý (Post-processing):** Toàn bộ giá trị dự báo sau tính toán nếu xuất hiện số âm đều được cắt gọt nghiêm ngặt về ngưỡng sàn kho bãi thực tế bằng phương pháp `clip(0)`
+- Enforcing safe data types and validating required columns.
+- Handling missing and invalid records.
+- Investigating sales distributions, product activity, and profitability.
+- Detecting negative quantities caused by returned parts.
+- Applying rolling compensation logic to reduce return-related noise.
+- Padding the SKU-date grid so that each series has a consistent time index.
+- Measuring sparsity and identifying high-value product segments.
 
 ---
 
-## 5. Kết quả
+### 2. Sparse-Demand Segmentation
 
-Việc áp dụng chiến lược xử lý nhiễu tinh gọn và bảo vệ nghiêm ngặt chống Data Leakage đã mang lại kết quả:
-* **Tập Validation nội bộ:** `[Điền điểm số WRMSSE thử nghiệm của team vào đây]`
-* **Public Leaderboard:** `[Điền điểm số trên hệ thống cuộc thi vào đây]`
-* **Private Leaderboard:** Đang chờ kết quả cuối cùng từ Ban Tổ Chức
+Products are divided into practical activity groups using recent sales behavior and a configurable sparsity threshold:
+
+- **Active Segment**  
+  Products with sufficient recent activity for moving-average forecasting.
+
+- **Sparse Segment**  
+  Products with irregular demand that require a conservative baseline.
+
+- **Stale Segment**  
+  Products whose last sale occurred sufficiently far in the past and should not receive an aggressive forecast.
+
+This segmentation helps the model avoid treating every product as if it had the same demand pattern.
 
 ---
 
-## 6. Đội ngũ thành viên
+### 3. Rule-Based Forecasting
 
-* **[Phan Vũ Đức Trung]**: Data Cleaning, Negative Value Handling (Rolling Compensation) & Time Padding, Exploratory Data Analysis (EDA), Profit Weights Analysis
-* **[Đặng Biên Phúc Lâm]**: Rule-based Model Development (Moving Average), WRMSSE Tuning & Post-processing
-* **[Huỳnh Phúc Nguyên]**: Data Cleaning, Negative Value Handling (Rolling Compensation) & Time Padding, Exploratory Data Analysis (EDA), Profit Weights Analysis, Rule-based Model Development
-* **[Đỗ Hoàng Quân]**: Project manager, Strategic planning, Insight reader
+`notebooks/02_model.ipynb` applies a transparent forecasting workflow based on:
+
+- Rolling and moving-average demand signals.
+- Recent-activity controls.
+- Stale-product rules.
+- Calendar and business-day multipliers.
+- Focused parameter search around promising configurations.
+- Post-processing that clips negative forecasts to a valid inventory floor.
+
+This design keeps the model interpretable and makes it easier to align predictions with inventory operations.
+
+---
+
+### 4. Negative Return Handling
+
+Automotive-parts transactions may include negative quantities when garages return parts because of incorrect diagnosis, compatibility issues, or operational errors.
+
+The pipeline addresses this problem by:
+
+- Detecting negative transaction quantities.
+- Separating sales behavior from return-related noise.
+- Applying rolling compensation logic where appropriate.
+- Preventing abnormal return transactions from dominating demand estimates.
+- Preserving a consistent time-series structure for each SKU.
+
+---
+
+### 5. Time-Series Padding
+
+Because many products do not appear in the transaction table every day, the data must be transformed into a continuous SKU-date grid.
+
+The padding process enables the pipeline to:
+
+- Represent zero-demand days explicitly.
+- Calculate rolling averages correctly.
+- Measure recency and inactivity.
+- Identify stale SKUs.
+- Apply consistent forecasting rules across all products.
+
+---
+
+### 6. Leakage Prevention
+
+All features are generated using information available at the forecasting cutoff.
+
+Future transactions are not used to:
+
+- Calculate historical features.
+- Tune forecasting rules.
+- Estimate moving averages.
+- Determine product activity segments.
+- Generate the final forecast.
+
+This ensures that the validation and submission process better reflects a real forecasting environment.
+
+---
+
+## How to Run
+
+### Requirements
+
+- Python 3.10 or newer
+- Jupyter Notebook or JupyterLab
+- Competition data downloaded locally
+
+---
+
+### Installation
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+```
+
+On macOS or Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+On Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Install the required libraries:
+
+```bash
+pip install pandas numpy matplotlib seaborn scikit-learn jupyter
+```
+
+---
+
+### Prepare the Dataset
+
+1. Open [`dataset/dataset link`](dataset/dataset%20link).
+2. Download the files provided by the competition organizers.
+3. Place the raw data in the location expected by the notebooks.
+4. Update the input path in the first notebook if you are running the project locally.
+
+---
+
+### Execute the Pipeline
+
+Start Jupyter Notebook:
+
+```bash
+jupyter notebook
+```
+
+Run the notebooks in the following order:
+
+1. Open and run:
+
+   ```text
+   notebooks/01_data_cleaning_and_eda.ipynb
+   ```
+
+2. Review the generated cleaned data and exploratory plots.
+
+3. Open and run:
+
+   ```text
+   notebooks/02_model.ipynb
+   ```
+
+4. Confirm that the final file is written to:
+
+   ```text
+   submissions/submission.csv
+   ```
+
+> **Tip:** Use **Kernel → Restart & Run All** to reproduce the complete pipeline from a clean state.
+
+---
+
+## Outputs
+
+The main deliverable is:
+
+```text
+submissions/submission.csv
+```
+
+Before submitting, verify that:
+
+- The file contains the required identifiers and forecast columns.
+- SKU and date keys are aligned with the competition sample submission.
+- Forecast values are numeric and non-negative.
+- There are no duplicate keys.
+- There are no missing forecast rows.
+- The submission file follows the required competition format.
+
+---
+
+## Results
+
+The repository is structured to support the final competition submission.
+
+Score placeholders can be updated once official results are available:
+
+| Evaluation Stage | WRMSSE |
+|---|---:|
+| Internal Validation | _To be updated_ |
+| Public Leaderboard | _To be updated_ |
+| Private Leaderboard | _To be updated_ |
+
+---
+
+## Team
+
+| Member | Responsibility |
+|---|---|
+| **Phan Vũ Đức Trung** | Data cleaning, negative-value handling, time padding, exploratory data analysis, and profit-weight analysis |
+| **Đặng Biên Phúc Lâm** | Rule-based model development, WRMSSE tuning, and post-processing |
+| **Huỳnh Phúc Nguyên** | Data cleaning, returns handling, exploratory data analysis, profit-weight analysis, and model development |
+| **Đỗ Hoàng Quân** | Project management, strategic planning, and business insight synthesis |
+
+---
+
+## Limitations and Future Work
+
+Potential improvements include:
+
+- Intermittent-demand models such as Croston, SBA, and TSB.
+- Hierarchical reconciliation across product, category, and distributor levels.
+- Gradient-boosting models for active and high-volume SKUs.
+- Deep-learning models for sufficiently dense time series.
+- Probabilistic forecasts and prediction intervals.
+- Automated backtesting and time-series cross-validation.
+- Inventory-aware optimization.
+- Joint optimization of service level, holding cost, and stockout risk.
+- More advanced product lifecycle modeling.
+- Demand forecasting at multiple business aggregation levels.
+
+---
+
+## Reproducibility Checklist
+
+Before sharing or submitting the project, verify the following:
+
+- [ ] The raw dataset is available locally.
+- [ ] Notebook paths are configured correctly.
+- [ ] The data-cleaning notebook runs successfully.
+- [ ] The model notebook runs without errors.
+- [ ] No future information is used in feature engineering.
+- [ ] The generated submission contains the expected rows.
+- [ ] Forecast values are numeric and non-negative.
+- [ ] There are no duplicated SKU-date combinations.
+- [ ] The final submission file is saved in `submissions/submission.csv`.
+
+---
+
+## License
+
+This repository was created for **HBAAC 2026**.
+
+Dataset usage, redistribution, and publication are subject to the terms and conditions established by the competition organizers.
+
+---
+
+<div align="center">
+
+Made with data, forecasting, and business reasoning by **Team CMD**.
+
+</div>
